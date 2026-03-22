@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+
+# local env secrets
+.env.local
+
+# generated kb cache
+server/data/kb-index.json
+
+# optional backup artifacts
+src/App.recovered.jsx
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

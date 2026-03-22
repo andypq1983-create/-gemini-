@@ -1,0 +1,24 @@
+{
+  "name": "qanto-gemini-frontend",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev-with-api.mjs",
+    "web:dev": "vite",
+    "api:dev": "node server/api-server.mjs",
+    "kb:build": "node scripts/build-kb-index.mjs",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 9999"
+  },
+  "dependencies": {
+    "framer-motion": "^12.23.24",
+    "lucide-react": "^0.542.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "three": "^0.179.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.3"
+  }
+}
