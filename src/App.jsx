@@ -2505,23 +2505,74 @@ function PersonalCard() {
 
 
 function QASection() {
-
   const [question, setQuestion] = useState("");
   const [lastQuestion, setLastQuestion] = useState("（等待输入）");
-  const [answer, setAnswer] = useState("请输入问题后点击发送。若知识库命中，将优先返回知识库答案；未命中则回退到 HTTP 大模型。");
+  const [answer, setAnswer] = useState("");
   const [source, setSource] = useState("ready");
   const [citations, setCitations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [timestamp, setTimestamp] = useState(() => new Date());
 
+  const HISTORY_STORAGE_KEY = "qanto_qa_history_session_v1";
+  const MAX_HISTORY_ITEMS = 12;
+
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.sessionStorage.getItem(HISTORY_STORAGE_KEY);
+      const parsed = JSON.parse(raw || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.sessionStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history.slice(0, MAX_HISTORY_ITEMS)));
+    } catch {
+      // ignore sessionStorage failures
+    }
+  }, [history]);
+
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
+
+  const statusMap = {
+    ready: "READY",
+    kb: "KB_HIT",
+    kb_rag: "RAG_HIT",
+    kb_rag_llm: "RAG_LLM",
+    llm: "LLM_HTTP",
+    llm_error: "LLM_ERROR",
+    none: "NO_MATCH",
+    error: "ERROR"
+  };
+
+  const statusLabel = statusMap[source] || "READY";
+  const statusOf = (rawSource) => statusMap[rawSource] || "READY";
+
+  const trimPreview = (text, limit = 140) => {
+    const compact = String(text || "").replace(/\s+/g, " ").trim();
+    if (!compact) return "（无内容）";
+    return compact.length > limit ? `${compact.slice(0, limit)}...` : compact;
+  };
+
+  const formatHistoryTime = (value) => {
+    const d = new Date(value || Date.now());
+    if (Number.isNaN(d.getTime())) return "--:--:--";
+    return d.toLocaleTimeString("zh-CN", { hour12: false });
+  };
+
+  const pushHistory = useCallback((item) => {
+    setHistory((prev) => [item, ...prev].slice(0, MAX_HISTORY_ITEMS));
+  }, []);
 
   const runQuery = async () => {
     const q = question.trim();
-    if (!q || isLoading) {
-      return;
-    }
+    if (!q || isLoading) return;
 
     setIsLoading(true);
     setError("");
@@ -2539,18 +2590,48 @@ function QASection() {
         throw new Error(data?.error || `请求失败 (${res.status})`);
       }
 
-      setAnswer(data?.answer || "暂无返回内容");
-      setSource(data?.source || "none");
-      setCitations(Array.isArray(data?.citations) ? data.citations : []);
-      setTimestamp(new Date());
+      const nextAnswer = data?.answer || "暂无返回内容";
+      const nextSource = data?.source || "none";
+      const nextCitations = Array.isArray(data?.citations) ? data.citations : [];
+      const now = new Date();
+
+      setAnswer(nextAnswer);
+      setSource(nextSource);
+      setCitations(nextCitations);
+      setTimestamp(now);
+
+      pushHistory({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        question: q,
+        answer: nextAnswer,
+        source: nextSource,
+        citations: nextCitations,
+        error: "",
+        timestamp: now.toISOString()
+      });
     } catch (err) {
+      const errorMessage = err.message || "请求失败";
+      const fallbackAnswer = "请求失败，请检查 API 服务或网络配置。需要的话我可以帮你快速排查。";
+      const now = new Date();
+
       setSource("error");
-      setError(err.message || "请求失败");
-      setAnswer("请求失败，请检查 API 服务或网络配置。需要的话我可以帮你快速排查。");
+      setError(errorMessage);
+      setAnswer(fallbackAnswer);
       setCitations([]);
-      setTimestamp(new Date());
+      setTimestamp(now);
+
+      pushHistory({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        question: q,
+        answer: fallbackAnswer,
+        source: "error",
+        citations: [],
+        error: errorMessage,
+        timestamp: now.toISOString()
+      });
     } finally {
       setIsLoading(false);
+      setQuestion("");
     }
   };
 
@@ -2561,38 +2642,43 @@ function QASection() {
     }
   };
 
-  const statusMap = {
-    ready: "READY",
-    kb: "KB_HIT",
-    kb_rag: "RAG_HIT",
-    kb_rag_llm: "RAG_LLM",
-    llm: "LLM_HTTP",
-    llm_error: "LLM_ERROR",
-    none: "NO_MATCH",
-    error: "ERROR"
+  const pickHistory = (item) => {
+    if (!item) return;
+    const when = new Date(item.timestamp || Date.now());
+
+    setQuestion("");
+    setLastQuestion(item.question || "（等待输入）");
+    setAnswer(item.answer || "暂无返回内容");
+    setSource(item.source || "none");
+    setCitations(Array.isArray(item.citations) ? item.citations : []);
+    setError(item.error || "");
+    setTimestamp(Number.isNaN(when.getTime()) ? new Date() : when);
+    setShowHistory(false);
   };
-  const statusLabel = statusMap[source] || "READY";
+
+  const clearHistory = () => {
+    setHistory([]);
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.removeItem(HISTORY_STORAGE_KEY);
+      } catch {
+        // ignore sessionStorage failures
+      }
+    }
+  };
 
   return (
-
     <div className="w-full max-w-5xl mx-auto relative py-10 z-10">
-
       <motion.div className="absolute -left-32 top-10 w-80 h-80 bg-white rounded-full blur-[150px] pointer-events-none mix-blend-screen" animate={{ opacity: [0.02, 0.06, 0.02] }} transition={{ duration: 6, ease: "easeInOut", repeat: Infinity, delay: 1 }} />
 
       <div className="text-center mb-12 relative z-10 pointer-events-none">
-
         <span className="micro-label block mb-4">Qanto Signal</span>
-
         <h2 className="text-4xl md:text-5xl font-light tracking-wide text-white mb-4"><ScrambleText text="接入 QANTO 灵感中枢" /></h2>
-
         <p className="text-gray-500 font-light">优先检索知识库；未命中时自动通过 HTTP 请求大模型回答。</p>
-
       </div>
 
       <div className="relative z-10 mb-16">
-
-        <div className="flex bg-[#111111]/90 backdrop-blur-md rounded-full p-2 w-full max-w-3xl mx-auto geek-border shadow-[0_4px_20px_rgba(0,0,0,0.5)] transition-all focus-within:shadow-[0_4px_25px_rgba(255,255,255,0.1)] interactive-zone">
-
+        <div className="flex items-center gap-2 bg-[#111111]/90 backdrop-blur-md rounded-full p-2 w-full max-w-3xl mx-auto geek-border shadow-[0_4px_20px_rgba(0,0,0,0.5)] transition-all focus-within:shadow-[0_4px_25px_rgba(255,255,255,0.1)] interactive-zone">
           <input
             type="text"
             value={question}
@@ -2603,85 +2689,100 @@ function QASection() {
           />
 
           <Magnetic>
-
             <motion.button
               onClick={runQuery}
               disabled={isLoading}
-              className={`bg-white text-black px-10 py-3.5 rounded-full font-bold transition-colors block micro-label !text-black ${isLoading ? "opacity-70" : ""}`}
-              animate={{ boxShadow: ['0 0 0px rgba(255,255,255,0)', '0 0 20px rgba(255,255,255,0.3)', '0 0 0px rgba(255,255,255,0)'] }}
+              className={`bg-white text-black px-8 py-3.5 rounded-full font-bold transition-colors block micro-label !text-black ${isLoading ? "opacity-70" : ""}`}
+              animate={{ boxShadow: ["0 0 0px rgba(255,255,255,0)", "0 0 20px rgba(255,255,255,0.3)", "0 0 0px rgba(255,255,255,0)"] }}
               transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
               whileHover={{ scale: isLoading ? 1 : 1.05, backgroundColor: "#e5e7eb" }}
             >
-              {isLoading ? "发送中" : "发送"}
+              {isLoading ? "\u53D1\u9001\u4E2D" : "\u53D1\u9001"}
             </motion.button>
-
           </Magnetic>
 
+          <button
+            type="button"
+            onClick={() => setShowHistory((v) => !v)}
+            className="text-gray-300 border border-white/20 rounded-full px-4 py-2 text-sm hover:text-white hover:border-white/40 transition-colors"
+          >
+            {showHistory ? "\u5173\u95ED\u5386\u53F2" : "\u5386\u53F2\u4F1A\u8BDD"}
+          </button>
         </div>
-
       </div>
 
-      <div className="bg-[#050505]/60 backdrop-blur-2xl geek-border rounded-3xl p-8 md:p-10 relative z-10 shadow-2xl">
+      <AnimatePresence>
+        {showHistory && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="mb-6 bg-[#050505]/60 backdrop-blur-2xl geek-border rounded-2xl p-5 md:p-6"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <p className="micro-label">SESSION_HISTORY</p>
+              <button
+                type="button"
+                onClick={clearHistory}
+                className="text-xs text-gray-400 hover:text-white transition-colors"
+              >
+                清空历史
+              </button>
+            </div>
 
-        <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-4">
-
-          <div className="flex items-center gap-3">
-
-             <span className={`w-2 h-2 rounded-full shadow-[0_0_8px_#00e5ff] ${isLoading ? "bg-amber-300 animate-pulse" : "bg-[#00e5ff]"}`}></span>
-
-             <span className="micro-label">SYS_QUERY_LOG</span>
-
-          </div>
-
-          <span className="micro-label tabular-data text-[10px]">TS: {timestamp.toLocaleTimeString("zh-CN", { hour12: false })}</span>
-
-        </div>
-
-        <div className="mb-8">
-
-          <p className="micro-label mb-3">INPUT_STRING</p>
-
-          <h3 className="text-white text-xl md:text-2xl font-light tracking-wide">{lastQuestion}</h3>
-
-        </div>
-
-        <div className="pt-8 border-t border-white/5">
-
-          <div className="flex justify-between items-center mb-5">
-
-            <p className="micro-label">OUTPUT_BUFFER</p>
-
-            <p className={`tabular-data text-[10px] px-3 py-1 rounded-full border ${source === "error" ? "text-red-300 bg-red-500/10 border-red-400/20" : "text-[#00e5ff] bg-[#00e5ff]/10 border-[#00e5ff]/20"}`}>STATUS: {statusLabel}</p>
-
-          </div>
-
-          <p className="text-gray-300 leading-relaxed text-base md:text-lg font-light tracking-wide whitespace-pre-line">{answer}</p>
-
-          {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
-
-          {citations.length > 0 && (
-            <div className="mt-6 border-t border-white/5 pt-4">
-              <p className="micro-label mb-3">KNOWLEDGE_SOURCES</p>
-              <ul className="space-y-2 text-sm text-gray-400">
-                {citations.map((item, idx) => (
-                  <li key={`${item.file || "src"}-${idx}`} className="tabular-data">
-                    [{idx + 1}] {item.file || item.fileName || "未知来源"} {item.score ? `(score: ${item.score})` : ""}
+            {history.length === 0 ? (
+              <p className="text-sm text-gray-500">暂无历史会话。当前记录只保存在本页面会话，关闭页面会自动清空。</p>
+            ) : (
+              <ul className="space-y-3 max-h-72 overflow-auto pr-1">
+                {history.map((item, idx) => (
+                  <li key={item.id || `${item.timestamp || "ts"}-${idx}`}>
+                    <button
+                      type="button"
+                      onClick={() => pickHistory(item)}
+                      className="w-full text-left rounded-xl border border-white/10 bg-black/20 px-4 py-3 hover:border-[#00e5ff]/50 hover:bg-black/35 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-white truncate">{item.question || "（空问题）"}</p>
+                        <p className="tabular-data text-[10px] text-gray-500 shrink-0">{formatHistoryTime(item.timestamp)} · {statusOf(item.source)}</p>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-300 leading-relaxed">{trimPreview(item.answer)}</p>
+                    </button>
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
+      <div className="bg-[#050505]/60 backdrop-blur-2xl geek-border rounded-3xl p-8 md:p-10 relative z-10 shadow-2xl">
+        <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-4">
+          <div className="flex items-center gap-3">
+            <span className={`w-2 h-2 rounded-full shadow-[0_0_8px_#00e5ff] ${isLoading ? "bg-amber-300 animate-pulse" : "bg-[#00e5ff]"}`}></span>
+            <span className="micro-label">SYS_QUERY_LOG</span>
+          </div>
+          <span className="micro-label tabular-data text-[10px]">TS: {timestamp.toLocaleTimeString("zh-CN", { hour12: false })}</span>
         </div>
 
+        <div className="mb-8">
+          <p className="micro-label mb-3">INPUT_STRING</p>
+          <h3 className="text-white text-xl md:text-2xl font-light tracking-wide">{lastQuestion}</h3>
+        </div>
+
+        <div className="pt-8 border-t border-white/5">
+          <div className="flex justify-between items-center mb-5">
+            <p className="micro-label">OUTPUT_BUFFER</p>
+            <p className={`tabular-data text-[10px] px-3 py-1 rounded-full border ${source === "error" ? "text-red-300 bg-red-500/10 border-red-400/20" : "text-[#00e5ff] bg-[#00e5ff]/10 border-[#00e5ff]/20"}`}>STATUS: {statusLabel}</p>
+          </div>
+
+          <p className="text-gray-300 leading-relaxed text-base md:text-lg font-light tracking-wide whitespace-pre-line">{answer}</p>
+          {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
+        </div>
       </div>
-
     </div>
-
   );
-
 }
-
 
 
 function ContentSection({ id, children }) {

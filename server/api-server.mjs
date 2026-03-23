@@ -76,8 +76,11 @@ const server = createServer(async (req, res) => {
         llmConfigured: isLlmConfigured(),
         ragConfig: {
           topK: Number.parseInt(process.env.RAG_TOP_K || "4", 10),
-          minScore: Number.parseFloat(process.env.RAG_MIN_SCORE || "1.1"),
-          useLlmOnHit: String(process.env.RAG_USE_LLM_ON_HIT || "false").toLowerCase() === "true"
+          minScore: Number.parseFloat(process.env.RAG_MIN_SCORE || "1.2"),
+          minVectorScore: Number.parseFloat(process.env.RAG_MIN_VECTOR_SCORE || "0.22"),
+          vectorWeight: Number.parseFloat(process.env.RAG_VECTOR_WEIGHT || "8"),
+          vectorDim: Number.parseInt(process.env.RAG_VECTOR_DIM || "256", 10),
+          useLlmOnHit: String(process.env.RAG_USE_LLM_ON_HIT || "true").toLowerCase() === "true"
         }
       });
       return;
@@ -92,7 +95,7 @@ const server = createServer(async (req, res) => {
       }
 
       const kbResult = await answerFromKnowledgeBase(question);
-      const useLlmOnHit = String(process.env.RAG_USE_LLM_ON_HIT || "false").toLowerCase() === "true";
+      const useLlmOnHit = String(process.env.RAG_USE_LLM_ON_HIT || "true").toLowerCase() === "true";
 
       if (kbResult.matched) {
         if (useLlmOnHit && isLlmConfigured()) {
