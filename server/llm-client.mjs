@@ -61,7 +61,7 @@ export function isLlmConfigured() {
 export async function requestLlmAnswer(question, contextChunks = []) {
   const rawApiUrl = process.env.LLM_API_URL;
   const apiKey = process.env.LLM_API_KEY;
-  const model = process.env.LLM_MODEL || "deepseek-ai/DeepSeek-R1";
+  const model = process.env.LLM_MODEL || "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B";
   const format = (process.env.LLM_API_FORMAT || "openai-chat").toLowerCase();
   const authHeader = process.env.LLM_AUTH_HEADER || "Authorization";
   const authScheme = process.env.LLM_AUTH_SCHEME || "Bearer";
