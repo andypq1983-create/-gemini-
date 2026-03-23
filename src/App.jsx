@@ -2508,7 +2508,7 @@ function QASection() {
 
   const [question, setQuestion] = useState("");
   const [lastQuestion, setLastQuestion] = useState("（等待输入）");
-  const [answer, setAnswer] = useState("请输入问题后点击 EXECUTE。若知识库命中，将优先返回知识库答案；未命中则回退到 HTTP 大模型。");
+  const [answer, setAnswer] = useState("请输入问题后点击发送。若知识库命中，将优先返回知识库答案；未命中则回退到 HTTP 大模型。");
   const [source, setSource] = useState("ready");
   const [citations, setCitations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -2567,6 +2567,7 @@ function QASection() {
     kb_rag: "RAG_HIT",
     kb_rag_llm: "RAG_LLM",
     llm: "LLM_HTTP",
+    llm_error: "LLM_ERROR",
     none: "NO_MATCH",
     error: "ERROR"
   };
@@ -2611,7 +2612,7 @@ function QASection() {
               transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
               whileHover={{ scale: isLoading ? 1 : 1.05, backgroundColor: "#e5e7eb" }}
             >
-              {isLoading ? "RUNNING" : "EXECUTE"}
+              {isLoading ? "发送中" : "发送"}
             </motion.button>
 
           </Magnetic>

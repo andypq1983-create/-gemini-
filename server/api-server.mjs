@@ -38,6 +38,20 @@ async function readJsonBody(req) {
   return JSON.parse(raw);
 }
 
+function formatLlmError(error) {
+  const msg = String(error?.message || "");
+  if (/insufficient|balance|余额不足/i.test(msg)) {
+    return "大模型账户余额不足，暂时无法调用。请先充值或更换可用模型/Key。";
+  }
+  if (/401|403|unauthorized|forbidden|invalid/i.test(msg)) {
+    return "大模型鉴权失败，请检查 LLM_API_KEY、模型名和接口地址。";
+  }
+  if (/timeout|network|fetch/i.test(msg)) {
+    return "大模型网络请求失败，请检查网络连通性或稍后重试。";
+  }
+  return `大模型暂时不可用：${msg.slice(0, 180)}`;
+}
+
 const server = createServer(async (req, res) => {
   try {
     const method = req.method || "GET";
@@ -82,14 +96,24 @@ const server = createServer(async (req, res) => {
 
       if (kbResult.matched) {
         if (useLlmOnHit && isLlmConfigured()) {
-          const ragAnswer = await requestLlmAnswer(question, kbResult.contextChunks || []);
-          sendJson(res, 200, {
-            ok: true,
-            source: "kb_rag_llm",
-            answer: ragAnswer,
-            citations: kbResult.citations
-          });
-          return;
+          try {
+            const ragAnswer = await requestLlmAnswer(question, kbResult.contextChunks || []);
+            sendJson(res, 200, {
+              ok: true,
+              source: "kb_rag_llm",
+              answer: ragAnswer,
+              citations: kbResult.citations
+            });
+            return;
+          } catch (llmError) {
+            sendJson(res, 200, {
+              ok: true,
+              source: "llm_error",
+              answer: formatLlmError(llmError),
+              citations: kbResult.citations
+            });
+            return;
+          }
         }
 
         sendJson(res, 200, {
@@ -102,14 +126,24 @@ const server = createServer(async (req, res) => {
       }
 
       if (isLlmConfigured()) {
-        const llmAnswer = await requestLlmAnswer(question);
-        sendJson(res, 200, {
-          ok: true,
-          source: "llm",
-          answer: llmAnswer,
-          citations: []
-        });
-        return;
+        try {
+          const llmAnswer = await requestLlmAnswer(question);
+          sendJson(res, 200, {
+            ok: true,
+            source: "llm",
+            answer: llmAnswer,
+            citations: []
+          });
+          return;
+        } catch (llmError) {
+          sendJson(res, 200, {
+            ok: true,
+            source: "llm_error",
+            answer: formatLlmError(llmError),
+            citations: []
+          });
+          return;
+        }
       }
 
       sendJson(res, 200, {

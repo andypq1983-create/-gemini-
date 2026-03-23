@@ -10,6 +10,8 @@ const EN_STOPWORDS = new Set([
   "and", "or", "with", "please", "tell", "me", "about", "this", "that", "it", "its", "be", "do", "does"
 ]);
 
+const GREETING_REGEX = /^(你好|您好|嗨|哈喽|在吗|在嘛|hello|hi|hey)\s*[!！。.?？]*$/i;
+
 let cached = null;
 let cachedPath = null;
 let cachedMtime = null;
@@ -23,11 +25,8 @@ function tokenize(query) {
     if (!word) continue;
 
     if (/^[\p{Script=Han}]+$/u.test(word)) {
-      tokens.add(word);
-      for (const ch of [...word]) {
-        tokens.add(ch);
-      }
       if (word.length >= 2) {
+        tokens.add(word);
         for (let i = 0; i < word.length - 1; i += 1) {
           tokens.add(word.slice(i, i + 2));
         }
@@ -134,6 +133,10 @@ export async function loadKnowledgeIndex() {
 export async function answerFromKnowledgeBase(question) {
   const query = (question || "").trim();
   if (!query) {
+    return { matched: false, source: "kb_rag", answer: "", citations: [], contextChunks: [] };
+  }
+
+  if (GREETING_REGEX.test(query)) {
     return { matched: false, source: "kb_rag", answer: "", citations: [], contextChunks: [] };
   }
 
