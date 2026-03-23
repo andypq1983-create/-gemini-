@@ -1,4 +1,11 @@
-# QANTO 问答页 RAG 部署说明
+﻿# QANTO 问答页部署说明（新手版）
+
+## 你现在要走的路线
+- 前端：Vercel（免费）
+- API：Vercel Serverless Functions（免费额度）
+- 域名：阿里云 `qanto.top`
+
+这样只需要一个新增平台（Vercel，用 GitHub 账号登录）。
 
 ## 本地开发
 1. 构建知识库索引
@@ -9,33 +16,40 @@
 - 前端: `http://127.0.0.1:9999`
 - API: `http://127.0.0.1:8787`
 
-## 当前知识库来源
-- `.env.local` 中 `KB_SOURCE_PATH` 默认是：
-- `F:\个人知识库\02-学习\04-赵逍遥AI课`
+## 发布前必须知道
+- 线上环境读取的是仓库里的 `server/data/kb-index.json`。
+- 线上不能访问你电脑里的 `F:\...` 路径。
+- 所以发布前先在本地执行一次 `npm run kb:build`，再把 `server/data/kb-index.json` 提交到 GitHub。
 
-## 接口逻辑
-- 命中知识库：返回 `source = kb_rag`
-- 未命中知识库：如果配置了模型 API，返回 `source = llm`
-- 未命中且未配置模型 API：返回 `source = none`
-
-## 配置大模型 HTTP 回退
-在 `.env.local` 填：
+## 环境变量（Vercel）
+至少配置：
 - `LLM_API_URL`
 - `LLM_API_KEY`
 - `LLM_MODEL`
-- 可选 `LLM_API_FORMAT=openai-chat|openai-responses`
 
-## 发布到网站时怎么处理
-关键点：发布环境通常**读不到你本机 F 盘路径**。
+建议同时配置：
+- `RAG_USE_LLM_ON_HIT=true`
+- `RAG_TOP_K=4`
+- `RAG_MIN_SCORE=1.1`
+- `RAG_MIN_TOKEN_MATCHES=2`
+- `RAG_MIN_TOKEN_COVERAGE=0.28`
+- `RAG_MIN_VECTOR_SCORE=0.30`
+- `RAG_VECTOR_WEIGHT=8`
+- `RAG_VECTOR_DIM=256`
 
-推荐方式：
-1. 把知识库内容同步到服务器可访问目录（或仓库内目录），例如 `./kb-content`。
-2. 在服务器环境变量中设置 `KB_SOURCE_PATH=./kb-content`。
-3. 部署前运行 `npm run kb:build` 生成 `server/data/kb-index.json`。
-4. 启动 API 服务（`node server/api-server.mjs`）并让前端同域访问 `/api/qa`。
-5. 把 `LLM_API_KEY` 只放在服务端环境变量，不要放前端代码。
+## API 路由
+- `GET /api/health`
+- `POST /api/qa`
 
-## RAG 参数
-- `RAG_TOP_K`：检索召回条数（默认 4）
-- `RAG_MIN_SCORE`：命中阈值（默认 1.1）
-- `RAG_USE_LLM_ON_HIT`：命中后是否仍走模型生成（默认 false）
+前端默认同域请求 `/api/qa`，无需额外改地址。
+
+## 阿里云域名绑定（qanto.top）
+在 Vercel 项目添加域名后，按它给出的值在阿里云 DNS 新增记录：
+- 主域名 `@`：通常是 `A` 或 `ALIAS/ANAME`（按 Vercel 提示填）
+- 子域名 `www`：通常是 `CNAME` 指向 Vercel 提示目标
+
+生效后即可通过 `https://qanto.top` 访问。
+
+## 安全提醒
+- API Key 只放在 Vercel 环境变量，不要写进前端代码。
+- 如果 Key 曾在聊天/截图中出现，建议立即重置。
